@@ -10,6 +10,8 @@ import datetime
 import math
 import requests
 import sys
+import os
+import json
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,7 +52,7 @@ async def request(*, url: str, timeout: int) -> Result:
         return Result(response=None, error=e)
 
 
-async def render_stats(results: Iterable[Result]) -> None:
+async def build_stats(results: Iterable[Result]) -> dict:
     no_results = len(results)
     no_successful_results = 0
     reason_counts: Dict[str, int] = {}
@@ -73,12 +75,21 @@ async def render_stats(results: Iterable[Result]) -> None:
     avg_latency = math.ceil(sum_latency / no_results)
 
     summary = {
-        "Success rate": f"{success_rate:3.6f}%",
-        "Average Latency": f"{avg_latency:4d}ms",
         "Sample Size": no_results,
-        "Reasons": reason_counts,
+        "Success Rate": f"{success_rate:3.9f}%",
+        "Average Latency": f"{avg_latency}ms",
+        "Count by Reason": reason_counts,
     }
-    print(summary, end="\r")
+
+    return summary
+
+
+async def render_stats(stats: dict, _format: str) -> None:
+    if _format == "json":
+        output = json.dumps(stats, indent=2)
+
+    os.system('clear')
+    print(output)
 
 
 async def main()-> None:
@@ -89,8 +100,10 @@ async def main()-> None:
         while True:
             result = await request(url=args.url, timeout=args.timeout)
             results.append(result)
-            await render_stats(results)
+            stats = await build_stats(results)
+            await render_stats(stats, _format="json")
     except KeyboardInterrupt:
+        os.system('clear')
         sys.exit(0)
 
 if __name__ == "__main__":
