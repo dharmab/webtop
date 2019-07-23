@@ -1,7 +1,9 @@
 # Webtop
 
-A script to HTTP GET a URL and print statistics
+A script to repeatedly HTTP GET a URL and print statistics, response codes and errors
 
 ## Usage
 
-`python3 webtop/__init__.py <URL> --request-history=<running max results to aggregate> --timeout <timeout in seconds, decimals OK>`
+`python3 webtop/__init__.py <URL>`
+
+See `--help` for more options
