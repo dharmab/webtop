@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 
 from collections import deque
-from time import sleep
-import urllib3.exceptions
 from typing import Dict, Iterable, Optional
 import argparse
-import asyncio
 import datetime
 import math
 import requests
@@ -44,7 +41,7 @@ class Result(object):
             self.is_success = self.response.status_code >= 200 and self.response.status_code < 400
 
 
-async def request(*, url: str, timeout: int) -> Result:
+def request(*, url: str, timeout: int) -> Result:
     try:
         response = requests.get(url, timeout=timeout)
         return Result(response=response)
@@ -52,7 +49,7 @@ async def request(*, url: str, timeout: int) -> Result:
         return Result(response=None, error=e)
 
 
-async def build_stats(results: Iterable[Result]) -> dict:
+def build_stats(results: Iterable[Result]) -> dict:
     no_results = len(results)
     no_successful_results = 0
     reason_counts: Dict[str, int] = {}
@@ -84,7 +81,7 @@ async def build_stats(results: Iterable[Result]) -> dict:
     return summary
 
 
-async def render_stats(stats: dict, _format: str) -> None:
+def render_stats(stats: dict, _format: str) -> None:
     if _format == "json":
         output = json.dumps(stats, indent=2)
 
@@ -92,19 +89,20 @@ async def render_stats(stats: dict, _format: str) -> None:
     print(output)
 
 
-async def main()-> None:
+def main()-> None:
     args = parse_args()
     assert are_args_valid(args)
     results = deque(maxlen=args.request_history)
     try:
         while True:
-            result = await request(url=args.url, timeout=args.timeout)
+            result = request(url=args.url, timeout=args.timeout)
             results.append(result)
-            stats = await build_stats(results)
-            await render_stats(stats, _format="json")
+            stats = build_stats(results)
+            render_stats(stats, _format="json")
     except KeyboardInterrupt:
         os.system('clear')
         sys.exit(0)
 
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
