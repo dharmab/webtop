@@ -50,8 +50,10 @@ def request(*, url: str, timeout: int) -> Result:
 
 
 def build_stats(results: Iterable[Result]) -> dict:
+    # no_ = Number Of
     no_results = len(results)
     no_successful_results = 0
+    no_responses = 0
     reason_counts: Dict[str, int] = {}
     sum_latency = 0
 
@@ -60,6 +62,7 @@ def build_stats(results: Iterable[Result]) -> dict:
             no_successful_results += 1
 
         if result.response is not None:
+            no_responses += 1
             sum_latency += result.response.elapsed / datetime.timedelta(milliseconds=1)
 
         if result.error is not None:
@@ -69,7 +72,7 @@ def build_stats(results: Iterable[Result]) -> dict:
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
     success_rate = no_successful_results / no_results * 100.
-    avg_latency = math.ceil(sum_latency / no_results)
+    avg_latency = math.ceil(sum_latency / no_responses)
 
     summary = {
         "Sample Size": no_results,
