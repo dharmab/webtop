@@ -12,17 +12,36 @@ import json
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
 
     parser.add_argument('url', metavar='URL', type=str)
-    parser.add_argument('--request-history', metavar='N', type=int, default=1000)
-    parser.add_argument('--timeout', metavar='SEC', type=float, default=1.)
+    parser.add_argument(
+        '--request-history',
+        metavar='N',
+        type=int,
+        help='Number of request results to track',
+        default=1000
+    )
+
+    parser.add_argument(
+        '--timeout',
+        metavar='SEC',
+        type=float,
+        help='Request timeout threshold',
+        default=1.
+    )
 
     return parser.parse_args()
 
 
 def are_args_valid(args: argparse.Namespace) -> bool:
-    return True
+    return all((
+        args.url.startswith(('http://', 'https://')),
+        args.request_history >= 1,
+        args.timeout > 0
+    ))
 
 
 class Result(object):
