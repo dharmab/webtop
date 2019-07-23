@@ -4,11 +4,12 @@ from collections import deque
 from typing import Dict, Iterable, Optional
 import argparse
 import datetime
+import json
 import math
+import os
 import requests
 import sys
-import os
-import json
+import yaml
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,6 +32,15 @@ def parse_args() -> argparse.Namespace:
         type=float,
         help='Request timeout threshold',
         default=1.
+    )
+
+    parser.add_argument(
+        '-o', '--output-format',
+        metavar='FORMAT',
+        type=str,
+        choices=('json', 'yaml'),
+        help='Output format',
+        default='json'
     )
 
     return parser.parse_args()
@@ -123,6 +133,8 @@ def build_stats(results: Iterable[Result]) -> dict:
 def render_stats(stats: dict, _format: str) -> None:
     if _format == "json":
         output = json.dumps(stats, indent=2)
+    elif _format == "yaml":
+        output = yaml.dump(stats, default_flow_style=False, sort_keys=False)
 
     os.system('clear')
     print(output)
@@ -137,7 +149,7 @@ def main()-> None:
             result = request(url=args.url, timeout=args.timeout)
             results.append(result)
             stats = build_stats(results)
-            render_stats(stats, _format="json")
+            render_stats(stats, _format=args.output_format)
     except KeyboardInterrupt:
         os.system('clear')
         sys.exit(0)
