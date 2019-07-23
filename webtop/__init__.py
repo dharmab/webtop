@@ -15,8 +15,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser.add_argument('url', metavar='URL', type=str)
-    parser.add_argument('--request-history', metavar='N', type=int, default=10)
-    parser.add_argument('--timeout', metavar='SEC', type=float, default=10.)
+    parser.add_argument('--request-history', metavar='N', type=int, default=1000)
+    parser.add_argument('--timeout', metavar='SEC', type=float, default=1.)
 
     return parser.parse_args()
 
