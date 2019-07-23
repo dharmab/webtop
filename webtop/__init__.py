@@ -56,7 +56,7 @@ class ErrorResult(Result):
         *,
         error: Exception
     ):
-        super().__init__(response=None, error=Exception)
+        super().__init__(response=None, error=error)
 
 
 def request(*, url: str, timeout: int) -> Result:
