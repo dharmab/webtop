@@ -41,12 +41,30 @@ class Result(object):
             self.is_success = self.response.status_code >= 200 and self.response.status_code < 400
 
 
+class ResponseResult(Result):
+    def __init__(
+        self,
+        *,
+        response: requests.models.Response
+    ):
+        super().__init__(response=response, error=None)
+
+
+class ErrorResult(Result):
+    def __init__(
+        self,
+        *,
+        error: Exception
+    ):
+        super().__init__(response=None, error=Exception)
+
+
 def request(*, url: str, timeout: int) -> Result:
     try:
         response = requests.get(url, timeout=timeout)
-        return Result(response=response)
+        return ResponseResult(response=response)
     except Exception as e:
-        return Result(response=None, error=e)
+        return ErrorResult(error=e)
 
 
 def build_stats(results: Iterable[Result]) -> dict:
@@ -61,14 +79,13 @@ def build_stats(results: Iterable[Result]) -> dict:
         if result.is_success:
             no_successful_results += 1
 
-        if result.response is not None:
+        if isinstance(result, ResponseResult):
             no_responses += 1
             sum_latency += result.response.elapsed / datetime.timedelta(milliseconds=1)
-
-        if result.error is not None:
-            reason = str(type(result.error).__name__)
-        else:
             reason = f"HTTP {result.response.status_code}"
+        elif isinstance(result, ErrorResult):
+            reason = str(type(result.error).__name__)
+
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
     success_rate = no_successful_results / no_results * 100.
