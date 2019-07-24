@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from collections import deque
-from threading import Lock, Thread
+from threading import Lock, Thread, Event
 from time import sleep
 from typing import Dict, Iterable, Optional, Callable, Any
 import argparse
@@ -11,7 +11,6 @@ import math
 import os
 import requests
 import signal
-import sys
 import yaml
 
 
@@ -164,11 +163,10 @@ def main()-> None:
 
     results = deque(maxlen=args.request_history)
     results_lock = Lock()
+    shutdown_event = Event()
 
     def shutdown_signal_handler(signum, frame):
-        for thread in threads:
-            thread.join(.01)
-        sys.exit(0)
+        shutdown_event.set()
 
     for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
         signal.signal(shutdown_signal, shutdown_signal_handler)
@@ -184,6 +182,9 @@ def main()-> None:
 
     def renderer() -> None:
         while True:
+            if shutdown_event.is_set():
+                return
+
             with results_lock:
                 stats = build_stats(results)
             output = render_stats(stats, _format=args.output_format)
@@ -201,11 +202,14 @@ def main()-> None:
             with results_lock:
                 results.append(result)
 
+            if shutdown_event.is_set():
+                return
+
     for i in range(args.threads):
         start_daemon(target=worker)
 
-    while True:
-        sleep(999)
+    for thread in threads:
+        thread.join()
 
 
 if __name__ == "__main__":
