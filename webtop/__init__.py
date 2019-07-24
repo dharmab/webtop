@@ -108,7 +108,7 @@ def request(*, url: str, timeout: int) -> Result:
         return ErrorResult(error=e)
 
 
-def build_stats(results: Iterable[Result]) -> dict:
+def build_stats(*, url: str, results: Iterable[Result]) -> dict:
     # no_ = Number Of
     no_results = len(results)
     no_successful_results = 0
@@ -140,6 +140,7 @@ def build_stats(results: Iterable[Result]) -> dict:
         avg_latency = 0
 
     summary = {
+        "URL": url,
         "Sample Size": no_results,
         "Success Rate": f"{success_rate:3.9f}%",
         "Average Latency": f"{avg_latency}ms",
@@ -157,7 +158,7 @@ def render_stats(stats: dict, _format: str) -> str:
     return output
 
 
-def main()-> None:
+def main() -> None:
     args = parse_args()
     assert are_args_valid(args)
 
@@ -186,7 +187,7 @@ def main()-> None:
                 return
 
             with results_lock:
-                stats = build_stats(results)
+                stats = build_stats(url=args.url, results=results)
             output = render_stats(stats, _format=args.output_format)
 
             os.system('clear')
