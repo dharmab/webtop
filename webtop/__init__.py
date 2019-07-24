@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
 from collections import deque
-from typing import Dict, Iterable, Optional
+from threading import Lock, Thread
+from time import sleep
+from typing import Dict, Iterable, Optional, Callable, Any
 import argparse
 import datetime
 import json
 import math
 import os
 import requests
+import signal
 import sys
 import yaml
 
@@ -18,6 +21,15 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument('url', metavar='URL', type=str)
+
+    parser.add_argument(
+        '-k', '--threads',
+        metavar='N',
+        type=int,
+        help='thread pool size',
+        default=1
+    )
+
     parser.add_argument(
         '--request-history',
         metavar='N',
@@ -50,7 +62,8 @@ def are_args_valid(args: argparse.Namespace) -> bool:
     return all((
         args.url.startswith(('http://', 'https://')),
         args.request_history >= 1,
-        args.timeout > 0
+        args.timeout > 0,
+        args.threads > 0,
     ))
 
 
@@ -117,8 +130,15 @@ def build_stats(results: Iterable[Result]) -> dict:
 
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
-    success_rate = no_successful_results / no_results * 100.
-    avg_latency = math.ceil(sum_latency / no_responses)
+    if no_results > 0:
+        success_rate = no_successful_results / no_results * 100.
+    else:
+        success_rate = 0.
+
+    if no_responses > 0:
+        avg_latency = math.ceil(sum_latency / no_responses)
+    else:
+        avg_latency = 0
 
     summary = {
         "Sample Size": no_results,
@@ -130,29 +150,62 @@ def build_stats(results: Iterable[Result]) -> dict:
     return summary
 
 
-def render_stats(stats: dict, _format: str) -> None:
+def render_stats(stats: dict, _format: str) -> str:
     if _format == "json":
         output = json.dumps(stats, indent=2)
     elif _format == "yaml":
         output = yaml.dump(stats, default_flow_style=False, sort_keys=False)
-
-    os.system('clear')
-    print(output)
+    return output
 
 
 def main()-> None:
     args = parse_args()
     assert are_args_valid(args)
+
     results = deque(maxlen=args.request_history)
-    try:
+    results_lock = Lock()
+
+    def shutdown_signal_handler(signum, frame):
+        for thread in threads:
+            thread.join(.01)
+        sys.exit(0)
+
+    for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(shutdown_signal, shutdown_signal_handler)
+
+    threads = []
+
+    def start_daemon(target: Callable[[], Any]) -> None:
+        # Fly, Pantalaimon!
+        thread = Thread(target=target)
+        threads.append(thread)
+        thread.daemon = True
+        thread.start()
+
+    def renderer() -> None:
+        while True:
+            with results_lock:
+                stats = build_stats(results)
+            output = render_stats(stats, _format=args.output_format)
+
+            os.system('clear')
+            print(output, flush=True)
+
+            sleep(.1)
+
+    start_daemon(target=renderer)
+
+    def worker() -> None:
         while True:
             result = request(url=args.url, timeout=args.timeout)
-            results.append(result)
-            stats = build_stats(results)
-            render_stats(stats, _format=args.output_format)
-    except KeyboardInterrupt:
-        os.system('clear')
-        sys.exit(0)
+            with results_lock:
+                results.append(result)
+
+    for i in range(args.threads):
+        start_daemon(target=worker)
+
+    while True:
+        sleep(999)
 
 
 if __name__ == "__main__":
