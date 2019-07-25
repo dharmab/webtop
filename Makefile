@@ -2,14 +2,11 @@
 
 CODE_DIR=webtop
 
-default: build
+default: ci
 
 install:
 	pip install -r requirements.txt
 	pip install -r requirements.build.txt
-
-build:
-	docker build -t webtop:latest .
 
 LINTER=flake8
 # E501 = line too long
