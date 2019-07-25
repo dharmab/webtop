@@ -10,3 +10,5 @@ steps:
   displayName: 'install'
 - script: make ci
   displayName: 'ci'
+- script: make build
+  displayName: 'build'
