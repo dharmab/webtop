@@ -1,12 +1,18 @@
 trigger:
 - master
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: ubuntu-latest
 steps:
 - task: UsePythonVersion@0
   inputs:
     versionSpec: 3.7
 - script: make install
-  displayName: 'install'
+  displayName: Install
 - script: make ci
-  displayName: 'ci'
+  displayName: CI
+- task: Docker@2
+  displayName: Build
+  inputs:
+    command: build
+    repository: webtop
+    tags: latest
