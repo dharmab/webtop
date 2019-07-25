@@ -6,6 +6,8 @@ A script to repeatedly HTTP GET a URL and print statistics, response codes and e
 
 ## Usage
 
-`python3 webtop/__init__.py <URL>`
+`python3 webtop/__init__.py <URL>`, or `docker run -it dharmab/webtop <URL>`
 
-See `--help` for more options
+> Note: The Docker image does not respond to Ctrl+C and should instead be signalled via `docker kill`
+
+See `--help` for more options, including multithreading support
