@@ -1,12 +1,12 @@
-.PHONY: install build lint type-check format format-check
+.PHONY: default install build lint type-check format format-check ci
 
 CODE_DIR=webtop
 
+default: ci
+
 install:
 	pip install -r requirements.txt
-
-build:
-	docker build -t webtop:latest .
+	pip install -r requirements.build.txt
 
 LINTER=flake8
 # E501 = line too long
