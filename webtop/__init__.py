@@ -3,7 +3,7 @@
 from collections import deque
 from threading import Lock, Thread, Event
 from time import sleep
-from typing import Dict, Iterable, Optional, Callable, Any
+from typing import Dict, Collection, Optional, Callable, Any, Deque
 import argparse
 import datetime
 import json
@@ -15,64 +15,39 @@ import yaml
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('url', metavar='URL', type=str)
+    parser.add_argument("url", metavar="URL", type=str)
 
-    parser.add_argument(
-        '-k', '--threads',
-        metavar='N',
-        type=int,
-        help='thread pool size',
-        default=1
-    )
+    parser.add_argument("-k", "--threads", metavar="N", type=int, help="thread pool size", default=1)
 
     parser.add_argument(
-        '--request-history',
-        metavar='N',
-        type=int,
-        help='Number of request results to track',
-        default=1000
+        "--request-history", metavar="N", type=int, help="Number of request results to track", default=1000
     )
 
-    parser.add_argument(
-        '--timeout',
-        metavar='SEC',
-        type=float,
-        help='Request timeout threshold',
-        default=1.
-    )
+    parser.add_argument("--timeout", metavar="SEC", type=float, help="Request timeout threshold", default=1.0)
 
     parser.add_argument(
-        '-o', '--output-format',
-        metavar='FORMAT',
+        "-o",
+        "--output-format",
+        metavar="FORMAT",
         type=str,
-        choices=('json', 'yaml'),
-        help='Output format',
-        default='json'
+        choices=("json", "yaml"),
+        help="Output format",
+        default="json",
     )
 
     return parser.parse_args()
 
 
 def are_args_valid(args: argparse.Namespace) -> bool:
-    return all((
-        args.url.startswith(('http://', 'https://')),
-        args.request_history >= 1,
-        args.timeout > 0,
-        args.threads > 0,
-    ))
+    return all(
+        (args.url.startswith(("http://", "https://")), args.request_history >= 1, args.timeout > 0, args.threads > 0)
+    )
 
 
 class Result(object):
-    def __init__(
-        self,
-        *,
-        response: Optional[requests.models.Response] = None,
-        error: Optional[Exception] = None,
-    ):
+    def __init__(self, *, response: Optional[requests.models.Response] = None, error: Optional[Exception] = None):
         self.response = response
         self.error = error
 
@@ -83,20 +58,12 @@ class Result(object):
 
 
 class ResponseResult(Result):
-    def __init__(
-        self,
-        *,
-        response: requests.models.Response
-    ):
+    def __init__(self, *, response: requests.models.Response):
         super().__init__(response=response, error=None)
 
 
 class ErrorResult(Result):
-    def __init__(
-        self,
-        *,
-        error: Exception
-    ):
+    def __init__(self, *, error: Exception):
         super().__init__(response=None, error=error)
 
 
@@ -108,7 +75,7 @@ def request(*, url: str, timeout: int) -> Result:
         return ErrorResult(error=e)
 
 
-def build_stats(*, url: str, results: Iterable[Result]) -> dict:
+def build_stats(*, url: str, results: Collection[Result]) -> dict:
     # no_ = Number Of
     no_results = len(results)
     no_successful_results = 0
@@ -121,8 +88,9 @@ def build_stats(*, url: str, results: Iterable[Result]) -> dict:
             no_successful_results += 1
 
         if isinstance(result, ResponseResult):
+            assert result.response is not None
             no_responses += 1
-            sum_latency += result.response.elapsed / datetime.timedelta(milliseconds=1)
+            sum_latency += math.ceil(result.response.elapsed / datetime.timedelta(milliseconds=1))
             reason = f"HTTP {result.response.status_code}"
         elif isinstance(result, ErrorResult):
             reason = str(type(result.error).__name__)
@@ -130,9 +98,9 @@ def build_stats(*, url: str, results: Iterable[Result]) -> dict:
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
     if no_results > 0:
-        success_rate = no_successful_results / no_results * 100.
+        success_rate = no_successful_results / no_results * 100.0
     else:
-        success_rate = 0.
+        success_rate = 0.0
 
     if no_responses > 0:
         avg_latency = math.ceil(sum_latency / no_responses)
@@ -154,7 +122,7 @@ def render_stats(stats: dict, _format: str) -> str:
     if _format == "json":
         output = json.dumps(stats, indent=2)
     elif _format == "yaml":
-        output = yaml.dump(stats, default_flow_style=False, sort_keys=False)
+        output = yaml.dump(stats, default_flow_style=False, sort_keys=False)  # type: ignore
     return output
 
 
@@ -162,7 +130,7 @@ def main() -> None:
     args = parse_args()
     assert are_args_valid(args)
 
-    results = deque(maxlen=args.request_history)
+    results: Deque[Result] = deque(maxlen=args.request_history)
     results_lock = Lock()
     shutdown_event = Event()
 
@@ -190,10 +158,10 @@ def main() -> None:
                 stats = build_stats(url=args.url, results=results)
             output = render_stats(stats, _format=args.output_format)
 
-            os.system('clear')
+            os.system("clear")
             print(output, flush=True)
 
-            sleep(.1)
+            sleep(0.1)
 
     start_daemon(target=renderer)
 
