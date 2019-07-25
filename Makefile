@@ -1,9 +1,12 @@
-.PHONY: install build lint type-check format format-check
+.PHONY: default install build lint type-check format format-check ci
 
 CODE_DIR=webtop
 
+default: build
+
 install:
 	pip install -r requirements.txt
+	pip install -r requirements.build.txt
 
 build:
 	docker build -t webtop:latest .
