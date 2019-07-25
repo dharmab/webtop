@@ -1,0 +1,12 @@
+trigger:
+- master
+pool:
+  vmImage: 'ubuntu-latest'
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: 3.7
+- script: make install
+  displayName: 'install'
+- script: make ci
+  displayName: 'ci'
