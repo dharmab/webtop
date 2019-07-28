@@ -19,7 +19,16 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("url", metavar="URL", type=str)
 
-    parser.add_argument("-k", "--threads", metavar="N", type=int, help="thread pool size", default=1)
+    parser.add_argument(
+        "--method",
+        metavar="VERB",
+        help="HTTP method",
+        type=str.upper,
+        choices=["GET", "HEAD", "OPTIONS", "TRACE"],
+        default="GET",
+    )
+
+    parser.add_argument("-k", "--threads", metavar="N", type=int, help="Thread pool size", default=1)
 
     parser.add_argument(
         "--request-history", metavar="N", type=int, help="Number of request results to track", default=1000
@@ -67,15 +76,15 @@ class ErrorResult(Result):
         super().__init__(response=None, error=error)
 
 
-def request(*, url: str, timeout: int) -> Result:
+def request(*, url: str, method: str, timeout: int) -> Result:
     try:
-        response = requests.get(url, timeout=timeout)
+        response = requests.request(method, url, timeout=timeout)
         return ResponseResult(response=response)
     except Exception as e:
         return ErrorResult(error=e)
 
 
-def build_stats(*, url: str, results: Collection[Result]) -> dict:
+def build_stats(*, url: str, method: str, results: Collection[Result]) -> dict:
     # no_ = Number Of
     no_results = len(results)
     no_successful_results = 0
@@ -109,6 +118,7 @@ def build_stats(*, url: str, results: Collection[Result]) -> dict:
 
     summary = {
         "URL": url,
+        "Verb": method,
         "Sample Size": no_results,
         "Success Rate": f"{success_rate:3.9f}%",
         "Average Latency": f"{avg_latency}ms",
@@ -155,7 +165,7 @@ def main() -> None:
                 return
 
             with results_lock:
-                stats = build_stats(url=args.url, results=results)
+                stats = build_stats(url=args.url, method=args.method, results=results)
             output = render_stats(stats, _format=args.output_format)
 
             os.system("clear")
@@ -167,7 +177,7 @@ def main() -> None:
 
     def worker() -> None:
         while True:
-            result = request(url=args.url, timeout=args.timeout)
+            result = request(url=args.url, method=args.method, timeout=args.timeout)
             with results_lock:
                 results.append(result)
 
