@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 from collections import deque
+from requests_toolbelt.adapters import host_header_ssl
 from threading import Lock, Thread, Event
 from time import sleep
 from typing import Dict, Iterable, Optional, Callable, Any
+from yarl import URL
 import argparse
 import datetime
 import json
@@ -54,6 +56,13 @@ def parse_args() -> argparse.Namespace:
         default='json'
     )
 
+    parser.add_argument(
+        '--resolve',
+        metavar='HOST:ADDRESS',
+        type=str,
+        help='Manually resolve host to address'
+    )
+
     return parser.parse_args()
 
 
@@ -63,6 +72,7 @@ def are_args_valid(args: argparse.Namespace) -> bool:
         args.request_history >= 1,
         args.timeout > 0,
         args.threads > 0,
+        args.resolve is None or ':' in args.resolve,
     ))
 
 
@@ -100,9 +110,9 @@ class ErrorResult(Result):
         super().__init__(response=None, error=error)
 
 
-def request(*, url: str, timeout: int) -> Result:
+def request(*, url: URL, timeout: int, session: requests.sessions.Session, headers: Dict[str, str]) -> Result:
     try:
-        response = requests.get(url, timeout=timeout)
+        response = session.get(url, timeout=timeout, headers=headers)
         return ResponseResult(response=response)
     except Exception as e:
         return ErrorResult(error=e)
@@ -162,6 +172,14 @@ def main() -> None:
     args = parse_args()
     assert are_args_valid(args)
 
+    url = URL(args.url)
+    headers = {}
+    if args.resolve is not None:
+        parsed_url = URL(url)
+        host, address = args.resolve.split(':')
+        if parsed_url.host == host:
+            url = url.with_host(address)
+
     results = deque(maxlen=args.request_history)
     results_lock = Lock()
     shutdown_event = Event()
@@ -198,8 +216,10 @@ def main() -> None:
     start_daemon(target=renderer)
 
     def worker() -> None:
+        session = requests.Session()
+        session.mount('https://', host_header_ssl.HostHeaderSSLAdapter())
         while True:
-            result = request(url=args.url, timeout=args.timeout)
+            result = request(url=url, timeout=args.timeout, session=session, headers=headers)
             with results_lock:
                 results.append(result)
 
