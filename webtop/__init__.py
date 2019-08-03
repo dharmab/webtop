@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from collections import deque
-from requests_toolbelt.adapters import host_header_ssl
+from requests_toolbelt.adapters import host_header_ssl  # type: ignore
 from threading import Lock, Thread, Event
 from time import sleep
 from typing import Dict, Collection, Optional, Callable, Any, Deque
@@ -15,7 +15,7 @@ import requests
 import requests.compat
 import requests.adapters
 import signal
-import urllib3.poolmanager
+import urllib3.poolmanager  # type: ignore
 import yaml
 
 
@@ -28,23 +28,13 @@ class NoPoolManager(urllib3.poolmanager.PoolManager):
 
 
 class NoPoolSSLAdapter(host_header_ssl.HostHeaderSSLAdapter):
-    def init_poolmanager(
-        self,
-        connections,
-        maxsize,
-        block=requests.adapters.DEFAULT_POOLBLOCK,
-        **pool_kwargs,
-    ):
+    def init_poolmanager(self, connections, maxsize, block=requests.adapters.DEFAULT_POOLBLOCK, **pool_kwargs):
         self._pool_connections = connections
         self._pool_maxsize = maxsize
         self._pool_block = block
 
         self.poolmanager = NoPoolManager(
-            num_pools=connections,
-            maxsize=maxsize,
-            block=block,
-            strict=True,
-            **pool_kwargs,
+            num_pools=connections, maxsize=maxsize, block=block, strict=True, **pool_kwargs
         )
 
 
@@ -53,9 +43,7 @@ class NoPoolAdapter(requests.adapters.HTTPAdapter):
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument("url", metavar="URL", type=str)
 
@@ -68,25 +56,13 @@ def parse_args() -> argparse.Namespace:
         default="GET",
     )
 
-    parser.add_argument(
-        "-k", "--threads", metavar="N", type=int, help="Thread pool size", default=1
-    )
+    parser.add_argument("-k", "--threads", metavar="N", type=int, help="Thread pool size", default=1)
 
     parser.add_argument(
-        "--request-history",
-        metavar="N",
-        type=int,
-        help="Number of request results to track",
-        default=1000,
+        "--request-history", metavar="N", type=int, help="Number of request results to track", default=1000
     )
 
-    parser.add_argument(
-        "--timeout",
-        metavar="SEC",
-        type=float,
-        help="Request timeout threshold",
-        default=1.0,
-    )
+    parser.add_argument("--timeout", metavar="SEC", type=float, help="Request timeout threshold", default=1.0)
 
     parser.add_argument(
         "-o",
@@ -98,12 +74,7 @@ def parse_args() -> argparse.Namespace:
         default="json",
     )
 
-    parser.add_argument(
-        "--resolve",
-        metavar="HOST:ADDRESS",
-        type=str,
-        help="Manually resolve host to address",
-    )
+    parser.add_argument("--resolve", metavar="HOST:ADDRESS", type=str, help="Manually resolve host to address")
 
     return parser.parse_args()
 
@@ -121,21 +92,14 @@ def are_args_valid(args: argparse.Namespace) -> bool:
 
 
 class Result(object):
-    def __init__(
-        self,
-        *,
-        response: Optional[requests.models.Response] = None,
-        error: Optional[Exception] = None,
-    ):
+    def __init__(self, *, response: Optional[requests.models.Response] = None, error: Optional[Exception] = None):
         self.response = response
         self.error = error
 
         if self.response is None or self.error is not None:
             self.is_success = False
         else:
-            self.is_success = (
-                self.response.status_code >= 200 and self.response.status_code < 400
-            )
+            self.is_success = self.response.status_code >= 200 and self.response.status_code < 400
 
 
 class ResponseResult(Result):
@@ -149,12 +113,7 @@ class ErrorResult(Result):
 
 
 def request(
-    *,
-    url: URL,
-    method: str,
-    timeout: int,
-    session: requests.sessions.Session,
-    headers: Dict[str, str],
+    *, url: URL, method: str, timeout: int, session: requests.sessions.Session, headers: Dict[str, str]
 ) -> Result:
     try:
         response = session.request(method, str(url), timeout=timeout, headers=headers)
@@ -178,9 +137,7 @@ def build_stats(*, url: str, method: str, results: Collection[Result]) -> dict:
         if isinstance(result, ResponseResult):
             assert result.response is not None
             no_responses += 1
-            sum_latency += math.ceil(
-                result.response.elapsed / datetime.timedelta(milliseconds=1)
-            )
+            sum_latency += math.ceil(result.response.elapsed / datetime.timedelta(milliseconds=1))
             reason = f"HTTP {result.response.status_code}"
         elif isinstance(result, ErrorResult):
             reason = str(type(result.error).__name__)
@@ -213,9 +170,7 @@ def render_stats(stats: dict, _format: str) -> str:
     if _format == "json":
         output = json.dumps(stats, indent=2)
     elif _format == "yaml":
-        output = yaml.dump(
-            stats, default_flow_style=False, sort_keys=False
-        )  # type: ignore
+        output = yaml.dump(stats, default_flow_style=False, sort_keys=False)  # type: ignore
     return output
 
 
@@ -272,13 +227,7 @@ def main() -> None:
 
         def worker() -> None:
             while True:
-                result = request(
-                    url=url,
-                    method=args.method,
-                    timeout=args.timeout,
-                    session=session,
-                    headers=headers,
-                )
+                result = request(url=url, method=args.method, timeout=args.timeout, session=session, headers=headers)
                 with results_lock:
                     results.append(result)
 
