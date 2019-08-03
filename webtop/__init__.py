@@ -225,6 +225,7 @@ def main() -> None:
         session.mount("http://", NoPoolAdapter())
         session.mount("https://", NoPoolSSLAdapter())
 
+<<<<<<< HEAD
         def worker() -> None:
             while True:
                 result = request(url=url, method=args.method, timeout=args.timeout, session=session, headers=headers)
