@@ -12,8 +12,44 @@ import json
 import math
 import os
 import requests
+import requests.compat
+import requests.adapters
 import signal
+import urllib3.poolmanager
 import yaml
+
+
+class NoPoolManager(urllib3.poolmanager.PoolManager):
+    def connection_from_pool_key(self, pool_key, request_context=None):
+        scheme = request_context["scheme"]
+        host = request_context["host"]
+        port = request_context["port"]
+        return self._new_pool(scheme, host, port, request_context=request_context)
+
+
+class NoPoolSSLAdapter(host_header_ssl.HostHeaderSSLAdapter):
+    def init_poolmanager(
+        self,
+        connections,
+        maxsize,
+        block=requests.adapters.DEFAULT_POOLBLOCK,
+        **pool_kwargs,
+    ):
+        self._pool_connections = connections
+        self._pool_maxsize = maxsize
+        self._pool_block = block
+
+        self.poolmanager = NoPoolManager(
+            num_pools=connections,
+            maxsize=maxsize,
+            block=block,
+            strict=True,
+            **pool_kwargs,
+        )
+
+
+class NoPoolAdapter(requests.adapters.HTTPAdapter):
+    init_poolmanager = NoPoolSSLAdapter.init_poolmanager
 
 
 def parse_args() -> argparse.Namespace:
@@ -121,7 +157,7 @@ def request(
     headers: Dict[str, str],
 ) -> Result:
     try:
-        response = session.request(method, url, timeout=timeout, headers=headers)
+        response = session.request(method, str(url), timeout=timeout, headers=headers)
         return ResponseResult(response=response)
     except Exception as e:
         return ErrorResult(error=e)
@@ -230,29 +266,30 @@ def main() -> None:
             sleep(0.1)
 
     start_daemon(target=renderer)
+    with requests.Session() as session:
+        session.mount("http://", NoPoolAdapter())
+        session.mount("https://", NoPoolSSLAdapter())
 
-    def worker() -> None:
-        session = requests.Session()
-        session.mount("https://", host_header_ssl.HostHeaderSSLAdapter())
-        while True:
-            result = request(
-                url=url,
-                method=args.method,
-                timeout=args.timeout,
-                session=session,
-                headers=headers,
-            )
-            with results_lock:
-                results.append(result)
+        def worker() -> None:
+            while True:
+                result = request(
+                    url=url,
+                    method=args.method,
+                    timeout=args.timeout,
+                    session=session,
+                    headers=headers,
+                )
+                with results_lock:
+                    results.append(result)
 
-            if shutdown_event.is_set():
-                return
+                if shutdown_event.is_set():
+                    return
 
-    for i in range(args.threads):
-        start_daemon(target=worker)
+        for i in range(args.threads):
+            start_daemon(target=worker)
 
-    for thread in threads:
-        thread.join()
+        for thread in threads:
+            thread.join()
 
 
 if __name__ == "__main__":
