@@ -50,6 +50,8 @@ def parse_args() -> argparse.Namespace:
         default="json",
     )
 
+    parser.add_argument("-d", "--duration", metavar="SEC", type=float, help="Test duration", default=None)
+
     return parser.parse_args()
 
 
@@ -159,6 +161,14 @@ async def main() -> None:
         signal.signal(shutdown_signal, shutdown_signal_handler)
 
     tasks = []
+
+    if args.duration is not None:
+
+        async def stop_test():
+            await asyncio.sleep(args.duration)
+            shutdown_event.set()
+
+        tasks.append(stop_test())
 
     async def renderer() -> None:
         while True:
