@@ -58,9 +58,7 @@ def parse_args() -> argparse.Namespace:
         default="GET",
     )
 
-    parser.add_argument(
-        "-j", "-k", "--jobs", "--threads", dest="jobs", metavar="N", type=int, help="Number of jobs", default=1
-    )
+    parser.add_argument("-k", "--workers", metavar="N", type=int, help="Number of workers", default=1)
 
     parser.add_argument(
         "--request-history", metavar="N", type=int, help="Number of request results to track", default=1000
@@ -106,9 +104,9 @@ class Result(object):
 
 
 class ResponseResult(Result):
-    def __init__(self, *, response: aiohttp.ClientResponse, start_time: float, end_time: float):
+    def __init__(self, *, response: aiohttp.ClientResponse, duration: datetime.timedelta):
         super().__init__(response=response, error=None)
-        self.elapsed = datetime.timedelta(seconds=end_time - start_time)
+        self.elapsed = duration
 
 
 class ErrorResult(Result):
@@ -122,7 +120,8 @@ async def request(*, url: URL, method: str, session: aiohttp.ClientSession) -> R
         async with session.request(method, url) as response:
             await response.read()
             end_time = time.time()
-            return ResponseResult(response=response, start_time=start_time, end_time=end_time)
+            duration = datetime.timedelta(seconds=end_time - start_time)
+            return ResponseResult(response=response, duration=duration)
     except Exception as e:
         return ErrorResult(error=e)
 
@@ -185,12 +184,11 @@ async def main() -> None:
     args = parse_args()
     assert are_args_valid(args)
 
-    url: URL = args.url
     custom_resolution = {}
     resolver: Callable = aiohttp.resolver.DefaultResolver
     if args.resolve is not None:
         host, address = args.resolve.split(":")
-        if url.host == host:
+        if args.url.host == host:
             custom_resolution[host] = address
 
             def resolver():
@@ -212,7 +210,7 @@ async def main() -> None:
             if shutdown_event.is_set():
                 return
 
-            stats = build_stats(url=url, method=args.method, results=results)
+            stats = build_stats(url=args.url, method=args.method, results=results)
             output = render_stats(stats, _format=args.output_format)
 
             os.system("clear")
@@ -227,10 +225,13 @@ async def main() -> None:
 
         async def worker() -> None:
             while not shutdown_event.is_set():
-                result = await request(url=url, method=args.method, session=session)
+
+                result = await request(url=args.url, method=args.method, session=session)
                 results.append(result)
 
-        tasks.extend([worker() for _ in range(args.jobs)])
+        for _ in range(args.workers):
+            tasks.append(worker())
+
         await asyncio.gather(*tasks)
 
 
