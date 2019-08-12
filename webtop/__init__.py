@@ -72,6 +72,7 @@ class ResponseResult(Result):
         super().__init__(response=response, error=None)
         self.elapsed = duration
 
+
 class ErrorResult(Result):
     def __init__(self, *, error: Exception):
         super().__init__(response=None, error=error)
