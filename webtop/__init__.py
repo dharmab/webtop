@@ -223,13 +223,11 @@ async def main() -> None:
 
         async def worker() -> None:
             while not shutdown_event.is_set():
-
                 result = await request(url=args.url, method=args.method, session=session)
                 results.append(result)
 
         for _ in range(args.workers):
             tasks.append(worker())
-
         await asyncio.gather(*tasks)
 
 
