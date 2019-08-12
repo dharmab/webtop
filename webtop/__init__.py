@@ -30,9 +30,7 @@ def parse_args() -> argparse.Namespace:
         default="GET",
     )
 
-    parser.add_argument(
-        "-j", "-k", "--jobs", "--threads", dest="jobs", metavar="N", type=int, help="Number of jobs", default=1
-    )
+    parser.add_argument("-k", "--workers", metavar="N", type=int, help="Number of workers", default=1)
 
     parser.add_argument(
         "--request-history", metavar="N", type=int, help="Number of request results to track", default=1000
@@ -54,7 +52,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def are_args_valid(args: argparse.Namespace) -> bool:
-    return all((args.url.is_absolute(), args.request_history >= 1, args.timeout > 0, args.jobs > 0))
+    return all((args.url.is_absolute(), args.request_history >= 1, args.timeout > 0, args.workers > 0))
 
 
 class Result(object):
@@ -180,7 +178,7 @@ async def main() -> None:
                 result = await request(url=args.url, method=args.method, session=session)
                 results.append(result)
 
-        tasks.extend([worker()] * args.jobs)
+        tasks.extend([worker()] * args.workers)
         await asyncio.gather(*tasks)
 
 
