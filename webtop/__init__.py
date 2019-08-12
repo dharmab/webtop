@@ -68,10 +68,9 @@ class Result(object):
 
 
 class ResponseResult(Result):
-    def __init__(self, *, response: aiohttp.ClientResponse, start_time: float, end_time: float):
+    def __init__(self, *, response: aiohttp.ClientResponse, duration: datetime.timedelta):
         super().__init__(response=response, error=None)
-        self.elapsed = datetime.timedelta(seconds=end_time - start_time)
-
+        self.elapsed = duration
 
 class ErrorResult(Result):
     def __init__(self, *, error: Exception):
@@ -84,7 +83,8 @@ async def request(*, url: URL, method: str, session: aiohttp.ClientSession) -> R
         async with session.request(method, url) as response:
             await response.read()
             end_time = time.time()
-            return ResponseResult(response=response, start_time=start_time, end_time=end_time)
+            duration = datetime.timedelta(seconds=end_time - start_time)
+            return ResponseResult(response=response, duration=duration)
     except Exception as e:
         return ErrorResult(error=e)
 
@@ -109,7 +109,6 @@ def build_stats(*, url: URL, method: str, results: Collection[Result]) -> dict:
         elif isinstance(result, ErrorResult):
             reason = str(type(result.error).__name__)
 
-        # noinspection PyUnboundLocalVariable
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
     if no_results > 0:
@@ -139,15 +138,12 @@ def render_stats(stats: dict, _format: str) -> str:
         output = json.dumps(stats, indent=2)
     elif _format == "yaml":
         output = yaml.dump(stats, default_flow_style=False, sort_keys=False)  # type: ignore
-    # noinspection PyUnboundLocalVariable
     return output
 
 
 async def main() -> None:
     args = parse_args()
     assert are_args_valid(args)
-
-    url: URL = args.url
 
     results: Deque[Result] = deque(maxlen=args.request_history)
     shutdown_event = Event()
@@ -165,7 +161,7 @@ async def main() -> None:
             if shutdown_event.is_set():
                 return
 
-            stats = build_stats(url=url, method=args.method, results=results)
+            stats = build_stats(url=args.url, method=args.method, results=results)
             output = render_stats(stats, _format=args.output_format)
 
             os.system("clear")
@@ -180,10 +176,10 @@ async def main() -> None:
 
         async def worker() -> None:
             while not shutdown_event.is_set():
-                result = await request(url=url, method=args.method, session=session)
+                result = await request(url=args.url, method=args.method, session=session)
                 results.append(result)
 
-        tasks.extend([worker() for _ in range(args.jobs)])
+        tasks.extend([worker()] * args.jobs)
         await asyncio.gather(*tasks)
 
 
