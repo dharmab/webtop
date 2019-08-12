@@ -178,7 +178,8 @@ async def main() -> None:
                 result = await request(url=args.url, method=args.method, session=session)
                 results.append(result)
 
-        tasks.extend([worker() for _ in range(args.workers)])
+        for _ in range(args.workers):
+            tasks.append(worker())
         await asyncio.gather(*tasks)
 
 
