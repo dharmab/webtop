@@ -87,7 +87,7 @@ def are_args_valid(args: argparse.Namespace) -> bool:
             args.url.is_absolute(),
             args.request_history >= 1,
             args.timeout > 0,
-            args.jobs > 0,
+            args.workers > 0,
             args.resolve is None or ":" in args.resolve,
         )
     )
