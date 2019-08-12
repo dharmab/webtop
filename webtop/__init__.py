@@ -146,7 +146,6 @@ def build_stats(*, url: URL, method: str, results: Collection[Result]) -> dict:
         elif isinstance(result, ErrorResult):
             reason = str(type(result.error).__name__)
 
-        # noinspection PyUnboundLocalVariable
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
     if no_results > 0:
@@ -176,7 +175,6 @@ def render_stats(stats: dict, _format: str) -> str:
         output = json.dumps(stats, indent=2)
     elif _format == "yaml":
         output = yaml.dump(stats, default_flow_style=False, sort_keys=False)  # type: ignore
-    # noinspection PyUnboundLocalVariable
     return output
 
 
