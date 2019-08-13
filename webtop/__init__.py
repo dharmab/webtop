@@ -182,12 +182,11 @@ async def main() -> None:
     args = parse_args()
     assert are_args_valid(args)
 
-    custom_resolution = {}
     resolver: Callable = aiohttp.resolver.DefaultResolver
     if args.resolve is not None:
         host, address = args.resolve.split(":")
         if args.url.host == host:
-            custom_resolution[host] = address
+            custom_resolution = {host: address}
 
             def resolver():
                 return CustomResolver(custom_mappings=custom_resolution)
