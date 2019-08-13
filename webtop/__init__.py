@@ -9,11 +9,39 @@ import json
 import math
 import os
 import signal
+import socket
 import time
 from threading import Event
-from typing import Dict, Collection, Optional, Deque
+from typing import Dict, Collection, Optional, Deque, List, Any, Callable
 import yaml
 from yarl import URL
+
+
+class CustomResolver(aiohttp.resolver.AbstractResolver):
+    async def close(self) -> None:
+        await self.async_resolver.close()
+
+    def __init__(self, *args, custom_mappings: Optional[Dict[str, str]] = None, **kwargs):
+        super().__init__(*args, **kwargs)  # type: ignore
+        if custom_mappings is None:
+            self.custom_mappings: Dict[str, str] = {}
+        else:
+            self.custom_mappings = custom_mappings
+        self.async_resolver = aiohttp.resolver.AsyncResolver()  # type: ignore
+
+    async def resolve(self, host: str, port: int = 0, family: int = socket.AF_INET) -> List[Dict[str, Any]]:
+        if host in self.custom_mappings:
+            return [
+                {
+                    "hostname": host,
+                    "host": self.custom_mappings[host],
+                    "port": port,
+                    "family": family,
+                    "proto": 0,
+                    "flags": socket.AI_NUMERICHOST,
+                }
+            ]
+        return await self.async_resolver.resolve(host, port, family)
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,11 +76,21 @@ def parse_args() -> argparse.Namespace:
         default="json",
     )
 
+    parser.add_argument("--resolve", metavar="HOST:ADDRESS", type=str, help="Manually resolve host to address")
+
     return parser.parse_args()
 
 
 def are_args_valid(args: argparse.Namespace) -> bool:
-    return all((args.url.is_absolute(), args.request_history >= 1, args.timeout > 0, args.workers > 0))
+    return all(
+        (
+            args.url.is_absolute(),
+            args.request_history >= 1,
+            args.timeout > 0,
+            args.workers > 0,
+            args.resolve is None or ":" in args.resolve,
+        )
+    )
 
 
 class Result(object):
@@ -144,6 +182,15 @@ async def main() -> None:
     args = parse_args()
     assert are_args_valid(args)
 
+    resolver: Callable = aiohttp.resolver.DefaultResolver
+    if args.resolve is not None:
+        host, address = args.resolve.split(":")
+        if args.url.host == host:
+            custom_resolution = {host: address}
+
+            def resolver():
+                return CustomResolver(custom_mappings=custom_resolution)
+
     results: Deque[Result] = deque(maxlen=args.request_history)
     shutdown_event = Event()
 
@@ -170,7 +217,7 @@ async def main() -> None:
 
     tasks.append(renderer())
     timeout = aiohttp.ClientTimeout(connect=args.timeout)
-    connector = aiohttp.TCPConnector(force_close=True, limit=0)
+    connector = aiohttp.TCPConnector(force_close=True, limit=0, resolver=resolver())
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
 
         async def worker() -> None:
