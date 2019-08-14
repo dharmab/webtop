@@ -144,7 +144,18 @@ def build_stats(*, url: URL, method: str, results: Collection[Result]) -> dict:
             sum_latency += math.ceil(result.elapsed / datetime.timedelta(milliseconds=1))
             reason = f"HTTP {result.response.status}"
         elif isinstance(result, ErrorResult):
-            reason = str(type(result.error).__name__)
+            error = result.error
+            # aiohttp uses very generic errors, so we need to drill down
+            if isinstance(error, aiohttp.ClientConnectorError):
+                error = error.os_error
+            if isinstance(error, aiohttp.ClientConnectorCertificateError):
+                error = error.certificate_error
+
+            reason = ""
+            error_module = type(error).__module__
+            if error_module and error_module != "builtins":
+                reason += f"{error_module}."
+            reason += type(error).__qualname__
 
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
