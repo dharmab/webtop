@@ -153,7 +153,7 @@ def build_stats(*, url: URL, method: str, results: Collection[Result]) -> dict:
 
             reason = ''
             error_module = type(error).__module__
-            if error_module:
+            if error_module and error_module != 'builtins':
                 reason += f'{error_module}.'
             reason += type(error).__qualname__
 
