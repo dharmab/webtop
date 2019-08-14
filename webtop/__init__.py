@@ -149,7 +149,7 @@ def build_stats(*, url: URL, method: str, results: Collection[Result]) -> dict:
             if isinstance(error, aiohttp.ClientConnectorError):
                 error = error.os_error
             if isinstance(error, aiohttp.ClientConnectorCertificateError):
-                error = error.certificate_erro
+                error = error.certificate_error
 
             reason = ''
             error_module = type(error).__module__
