@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
+from collections import deque
+from threading import Event
+from typing import Dict, Collection, Optional, Deque, List, Any, Callable
+from yarl import URL
 import aiohttp
 import argparse
 import asyncio
-from collections import deque
 import datetime
 import json
 import math
@@ -11,10 +14,7 @@ import os
 import signal
 import socket
 import time
-from threading import Event
-from typing import Dict, Collection, Optional, Deque, List, Any, Callable
 import yaml
-from yarl import URL
 
 
 class CustomResolver(aiohttp.resolver.AbstractResolver):
