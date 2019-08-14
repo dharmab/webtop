@@ -67,6 +67,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", metavar="SEC", type=float, help="Request timeout threshold", default=1.0)
 
     parser.add_argument(
+        "--follow-redirects", type=bool, help="Whether HTTP 3XX responses will be followed", default=True
+    )
+
+    parser.add_argument(
         "-o",
         "--output-format",
         metavar="FORMAT",
@@ -114,10 +118,12 @@ class ErrorResult(Result):
         super().__init__(response=None, error=error)
 
 
-async def request(*, url: URL, method: str, session: aiohttp.ClientSession) -> Result:
+async def request(
+    *, url: URL, method: str = "GET", follow_redirects: bool = True, session: aiohttp.ClientSession
+) -> Result:
     try:
         start_time = time.time()
-        async with session.request(method, url) as response:
+        async with session.request(method, url, allow_redirects=follow_redirects) as response:
             await response.read()
             end_time = time.time()
             duration = datetime.timedelta(seconds=end_time - start_time)
@@ -233,7 +239,9 @@ async def main() -> None:
 
         async def worker() -> None:
             while not shutdown_event.is_set():
-                result = await request(url=args.url, method=args.method, session=session)
+                result = await request(
+                    url=args.url, method=args.method, session=session, follow_redirects=args.follow_redirects
+                )
                 results.append(result)
 
         for _ in range(args.workers):
