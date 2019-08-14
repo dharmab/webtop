@@ -66,7 +66,9 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--timeout", metavar="SEC", type=float, help="Request timeout threshold", default=1.0)
 
-    parser.add_argument("--follow-redirects", type=bool, help="Whether HTTP 3XX responses will be followed", default=True)
+    parser.add_argument(
+        "--follow-redirects", type=bool, help="Whether HTTP 3XX responses will be followed", default=True
+    )
 
     parser.add_argument(
         "-o",
