@@ -151,10 +151,10 @@ def build_stats(*, url: URL, method: str, results: Collection[Result]) -> dict:
             if isinstance(error, aiohttp.ClientConnectorCertificateError):
                 error = error.certificate_error
 
-            reason = ''
+            reason = ""
             error_module = type(error).__module__
-            if error_module and error_module != 'builtins':
-                reason += f'{error_module}.'
+            if error_module and error_module != "builtins":
+                reason += f"{error_module}."
             reason += type(error).__qualname__
 
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
