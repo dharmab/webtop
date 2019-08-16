@@ -1,19 +1,47 @@
 #!/usr/bin/env python3
 
+from collections import deque
+from typing import Dict, Collection, Optional, Deque, List, Any, Callable
+from yarl import URL
 import aiohttp
 import argparse
 import asyncio
-from collections import deque
+import async_timeout
 import datetime
 import json
 import math
 import os
 import signal
+import socket
 import time
-from threading import Event
-from typing import Dict, Collection, Optional, Deque
 import yaml
-from yarl import URL
+
+
+class CustomResolver(aiohttp.resolver.AbstractResolver):
+    async def close(self) -> None:
+        await self.async_resolver.close()
+
+    def __init__(self, *args, custom_mappings: Optional[Dict[str, str]] = None, **kwargs):
+        super().__init__(*args, **kwargs)  # type: ignore
+        if custom_mappings is None:
+            self.custom_mappings: Dict[str, str] = {}
+        else:
+            self.custom_mappings = custom_mappings
+        self.async_resolver = aiohttp.resolver.AsyncResolver()  # type: ignore
+
+    async def resolve(self, host: str, port: int = 0, family: int = socket.AF_INET) -> List[Dict[str, Any]]:
+        if host in self.custom_mappings:
+            return [
+                {
+                    "hostname": host,
+                    "host": self.custom_mappings[host],
+                    "port": port,
+                    "family": family,
+                    "proto": 0,
+                    "flags": socket.AI_NUMERICHOST,
+                }
+            ]
+        return await self.async_resolver.resolve(host, port, family)
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,15 +58,17 @@ def parse_args() -> argparse.Namespace:
         default="GET",
     )
 
-    parser.add_argument(
-        "-j", "-k", "--jobs", "--threads", dest="jobs", metavar="N", type=int, help="Number of jobs", default=1
-    )
+    parser.add_argument("-k", "--workers", metavar="N", type=int, help="Number of workers", default=1)
 
     parser.add_argument(
         "--request-history", metavar="N", type=int, help="Number of request results to track", default=1000
     )
 
     parser.add_argument("--timeout", metavar="SEC", type=float, help="Request timeout threshold", default=1.0)
+
+    parser.add_argument(
+        "--follow-redirects", type=bool, help="Whether HTTP 3XX responses will be followed", default=True
+    )
 
     parser.add_argument(
         "-o",
@@ -50,13 +80,23 @@ def parse_args() -> argparse.Namespace:
         default="json",
     )
 
+    parser.add_argument("--resolve", metavar="HOST:ADDRESS", type=str, help="Manually resolve host to address")
+
     parser.add_argument("-d", "--duration", metavar="SEC", type=float, help="Test duration", default=None)
 
     return parser.parse_args()
 
 
 def are_args_valid(args: argparse.Namespace) -> bool:
-    return all((args.url.is_absolute(), args.request_history >= 1, args.timeout > 0, args.jobs > 0))
+    return all(
+        (
+            args.url.is_absolute(),
+            args.request_history >= 1,
+            args.timeout > 0,
+            args.workers > 0,
+            args.resolve is None or ":" in args.resolve,
+        )
+    )
 
 
 class Result(object):
@@ -70,9 +110,9 @@ class Result(object):
 
 
 class ResponseResult(Result):
-    def __init__(self, *, response: aiohttp.ClientResponse, start_time: float, end_time: float):
+    def __init__(self, *, response: aiohttp.ClientResponse, duration: datetime.timedelta):
         super().__init__(response=response, error=None)
-        self.elapsed = datetime.timedelta(seconds=end_time - start_time)
+        self.elapsed = duration
 
 
 class ErrorResult(Result):
@@ -80,13 +120,16 @@ class ErrorResult(Result):
         super().__init__(response=None, error=error)
 
 
-async def request(*, url: URL, method: str, session: aiohttp.ClientSession) -> Result:
+async def request(
+    *, url: URL, method: str = "GET", follow_redirects: bool = True, session: aiohttp.ClientSession
+) -> Result:
     try:
         start_time = time.time()
-        async with session.request(method, url) as response:
+        async with session.request(method, url, allow_redirects=follow_redirects) as response:
             await response.read()
             end_time = time.time()
-            return ResponseResult(response=response, start_time=start_time, end_time=end_time)
+            duration = datetime.timedelta(seconds=end_time - start_time)
+            return ResponseResult(response=response, duration=duration)
     except Exception as e:
         return ErrorResult(error=e)
 
@@ -109,9 +152,19 @@ def build_stats(*, url: URL, method: str, results: Collection[Result]) -> dict:
             sum_latency += math.ceil(result.elapsed / datetime.timedelta(milliseconds=1))
             reason = f"HTTP {result.response.status}"
         elif isinstance(result, ErrorResult):
-            reason = str(type(result.error).__name__)
+            error = result.error
+            # aiohttp uses very generic errors, so we need to drill down
+            if isinstance(error, aiohttp.ClientConnectorError):
+                error = error.os_error
+            if isinstance(error, aiohttp.ClientConnectorCertificateError):
+                error = error.certificate_error
 
-        # noinspection PyUnboundLocalVariable
+            reason = ""
+            error_module = type(error).__module__
+            if error_module and error_module != "builtins":
+                reason += f"{error_module}."
+            reason += type(error).__qualname__
+
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
     if no_results > 0:
@@ -141,7 +194,6 @@ def render_stats(stats: dict, _format: str) -> str:
         output = json.dumps(stats, indent=2)
     elif _format == "yaml":
         output = yaml.dump(stats, default_flow_style=False, sort_keys=False)  # type: ignore
-    # noinspection PyUnboundLocalVariable
     return output
 
 
@@ -149,10 +201,17 @@ async def main() -> None:
     args = parse_args()
     assert are_args_valid(args)
 
-    url: URL = args.url
+    resolver: Callable = aiohttp.resolver.DefaultResolver
+    if args.resolve is not None:
+        host, address = args.resolve.split(":")
+        if args.url.host == host:
+            custom_resolution = {host: address}
+
+            def resolver():
+                return CustomResolver(custom_mappings=custom_resolution)
 
     results: Deque[Result] = deque(maxlen=args.request_history)
-    shutdown_event = Event()
+    shutdown_event = asyncio.Event()
 
     def shutdown_signal_handler(_, __):
         shutdown_event.set()
@@ -165,7 +224,11 @@ async def main() -> None:
     if args.duration is not None:
 
         async def stop_test():
-            await asyncio.sleep(args.duration)
+            try:
+                async with async_timeout.timeout(args.duration):
+                    await shutdown_event.wait()
+            except asyncio.TimeoutError:
+                pass
             shutdown_event.set()
 
         tasks.append(stop_test())
@@ -175,7 +238,7 @@ async def main() -> None:
             if shutdown_event.is_set():
                 return
 
-            stats = build_stats(url=url, method=args.method, results=results)
+            stats = build_stats(url=args.url, method=args.method, results=results)
             output = render_stats(stats, _format=args.output_format)
 
             os.system("clear")
@@ -185,15 +248,18 @@ async def main() -> None:
 
     tasks.append(renderer())
     timeout = aiohttp.ClientTimeout(connect=args.timeout)
-    connector = aiohttp.TCPConnector(force_close=True, limit=0)
+    connector = aiohttp.TCPConnector(force_close=True, limit=0, resolver=resolver())
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
 
         async def worker() -> None:
             while not shutdown_event.is_set():
-                result = await request(url=url, method=args.method, session=session)
+                result = await request(
+                    url=args.url, method=args.method, session=session, follow_redirects=args.follow_redirects
+                )
                 results.append(result)
 
-        tasks.extend([worker() for _ in range(args.jobs)])
+        for _ in range(args.workers):
+            tasks.append(worker())
         await asyncio.gather(*tasks)
 
 
