@@ -6,8 +6,8 @@ from yarl import URL
 import aiohttp
 import argparse
 import asyncio
-import async_timeout
 import datetime
+import durationpy  # type: ignore
 import json
 import math
 import os
@@ -82,9 +82,18 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--resolve", metavar="HOST:ADDRESS", type=str, help="Manually resolve host to address")
 
-    parser.add_argument("-d", "--duration", metavar="SEC", type=float, help="Test duration", default=None)
+    parser.add_argument("-d", "--duration", metavar="TIME", type=str, help="Test duration, e.g. 3h2m1s", default=None)
 
     return parser.parse_args()
+
+
+def duration_is_vaild(duration: str) -> bool:
+    try:
+        durationpy.from_str(duration)
+        return True
+    # Really?! durationpy raises bare Exception??
+    except Exception:
+        return False
 
 
 def are_args_valid(args: argparse.Namespace) -> bool:
@@ -95,6 +104,7 @@ def are_args_valid(args: argparse.Namespace) -> bool:
             args.timeout > 0,
             args.workers > 0,
             args.resolve is None or ":" in args.resolve,
+            duration_is_vaild(args.duration),
         )
     )
 
@@ -222,13 +232,10 @@ async def main() -> None:
     tasks = []
 
     if args.duration is not None:
+        duration = durationpy.from_str(args.duration)
 
         async def stop_test():
-            try:
-                async with async_timeout.timeout(args.duration):
-                    await shutdown_event.wait()
-            except asyncio.TimeoutError:
-                pass
+            await asyncio.wait([shutdown_event.wait()], timeout=duration)
             shutdown_event.set()
 
         tasks.append(stop_test())
