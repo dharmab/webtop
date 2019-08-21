@@ -113,11 +113,15 @@ class Runner(object):
                     result = await request(url=self.url, method=self.method.value, session=session)
                     self.__results.append(result)
 
-            self.__workers = [worker() for _ in range(self.__number_of_workers)]
+            event_loop = asyncio.get_event_loop()
+            tasks = []
+            for _ in range(self.__number_of_workers):
+                tasks.append(event_loop.create_task(worker()))
+            self.__tasks = tasks
 
     async def stop(self) -> None:
         self.__stop_event.set()
-        await asyncio.gather(*self.__workers)
+        asyncio.gather(*self.__tasks)
 
     def get_results(self) -> Set[Result]:
         return set(copy.deepcopy(self.__results))

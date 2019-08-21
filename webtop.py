@@ -105,7 +105,8 @@ async def main() -> None:
         number_of_workers=args.workers,
         timeout=args.timeout
     )
-    runner.start()
+    await runner.start()
+    breakpoint()
 
     shutdown_event = Event()
 
