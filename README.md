@@ -6,6 +6,6 @@ A script to repeatedly HTTP GET a URL and print statistics, response codes and e
 
 ## Usage
 
-`python3 webtop/__init__.py <URL>`
+`python3 webtop/cli.py <URL>`
 
 See `--help` for more options
