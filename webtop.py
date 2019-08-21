@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-from . import api
 from threading import Event
-from yarl import URL
 from time import sleep
+from webtop import api
+from yarl import URL
 import argparse
+import asyncio
 import json
 import os
 import signal
@@ -86,27 +87,28 @@ def _print_stats(statistics: api.Statistics, _format: str) -> None:
     print(output, flush=True)
 
 
-def main() -> None:
+async def main() -> None:
     args = _parse_args()
     assert _are_args_valid(args)
 
+    custom_resolution = {}
     if args.resolve is not None:
         host, address = args.resolve.split(":")
         if args.url.host == host:
-            custom_resolution = {host: address}
+            custom_resolution[host] = address
 
     runner = api.Runner(
         url=str(args.url),
         name_resolution_overrides=custom_resolution,
         method=args.method,
         number_of_running_requests=args.request_history,
-        number_of_workers=args.number_of_workers,
+        number_of_workers=args.workers,
         timeout=args.timeout
     )
 
     shutdown_event = Event()
 
-    def shutdown_signal_handler(_, __):
+    async def shutdown_signal_handler(_, __):
         await runner.stop()
         shutdown_event.set()
 
@@ -114,9 +116,9 @@ def main() -> None:
         signal.signal(shutdown_signal, shutdown_signal_handler)
 
     while not shutdown_event.is_set():
-        _print_stats(runner.get_statistics(), _format=args.foramt)
+        _print_stats(runner.get_statistics(), _format=args.output_format)
         sleep(0.1)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

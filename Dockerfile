@@ -4,4 +4,5 @@ RUN apk add --virtual .build-dependencies build-base libressl libffi-dev && \
   pip install -r requirements.txt && \
   apk del .build-dependencies
 ADD webtop .
-ENTRYPOINT python webtop/cli.py
+ADD webtop.py
+ENTRYPOINT python webtop.py

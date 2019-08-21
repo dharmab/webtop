@@ -1,5 +1,5 @@
 #!/use/bin/env python3
 
-from . import cli, api
+from . import api
 
-__all__ = ["cli", "api"]
+__all__ = ["api"]
