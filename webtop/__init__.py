@@ -67,7 +67,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", metavar="SEC", type=float, help="Request timeout threshold", default=1.0)
 
     parser.add_argument(
-        "--follow-redirects", type=bool, help="Whether HTTP 3XX responses will be followed", default=True
+        "--follow-redirects",
+        metavar="BOOL",
+        type=str,
+        help="Whether HTTP 3XX responses will be followed",
+        default="true",
+    )
+
+    parser.add_argument(
+        "--verify-tls", metavar="BOOL", type=str, help="Whether to verify TLS certificates", default="true"
     )
 
     parser.add_argument(
@@ -83,6 +91,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resolve", metavar="HOST:ADDRESS", type=str, help="Manually resolve host to address")
 
     return parser.parse_args()
+
+
+def _str_to_bool(s: str, default: bool) -> bool:
+    if s.lower() == "true":
+        return True
+    if s.lower() == "false":
+        return False
+    return default
 
 
 def are_args_valid(args: argparse.Namespace) -> bool:
@@ -152,9 +168,9 @@ def build_stats(*, url: URL, method: str, results: Collection[Result]) -> dict:
         elif isinstance(result, ErrorResult):
             error = result.error
             # aiohttp uses very generic errors, so we need to drill down
-            if isinstance(error, aiohttp.ClientConnectorError):
+            if isinstance(error, aiohttp.ClientConnectorError) and hasattr(error, "os_error"):
                 error = error.os_error
-            if isinstance(error, aiohttp.ClientConnectorCertificateError):
+            if isinstance(error, aiohttp.ClientConnectorCertificateError) and hasattr(error, "certificate_error"):
                 error = error.certificate_error
 
             reason = ""
@@ -234,13 +250,18 @@ async def main() -> None:
 
     tasks.append(renderer())
     timeout = aiohttp.ClientTimeout(connect=args.timeout)
-    connector = aiohttp.TCPConnector(force_close=True, limit=0, resolver=resolver())
+    connector = aiohttp.TCPConnector(
+        force_close=True, limit=0, resolver=resolver(), verify_ssl=_str_to_bool(args.verify_tls, default=True)
+    )
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
 
         async def worker() -> None:
             while not shutdown_event.is_set():
                 result = await request(
-                    url=args.url, method=args.method, session=session, follow_redirects=args.follow_redirects
+                    url=args.url,
+                    method=args.method,
+                    session=session,
+                    follow_redirects=_str_to_bool(args.follow_redirects, default=True),
                 )
                 results.append(result)
 
