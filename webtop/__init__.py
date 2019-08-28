@@ -67,11 +67,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", metavar="SEC", type=float, help="Request timeout threshold", default=1.0)
 
     parser.add_argument(
-        "--follow-redirects", metavar="BOOL", type=str, help="Whether HTTP 3XX responses will be followed", default='true'
+        "--follow-redirects",
+        metavar="BOOL",
+        type=str,
+        help="Whether HTTP 3XX responses will be followed",
+        default="true",
     )
 
     parser.add_argument(
-        "--verify-tls", metavar="BOOL", type=str, help="Whether to verify TLS certificates", default='true'
+        "--verify-tls", metavar="BOOL", type=str, help="Whether to verify TLS certificates", default="true"
     )
 
     parser.add_argument(
@@ -90,9 +94,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def _str_to_bool(s: str, default: bool) -> bool:
-    if s.lower() == 'true':
+    if s.lower() == "true":
         return True
-    if s.lower() == 'false':
+    if s.lower() == "false":
         return False
     return default
 
@@ -246,13 +250,18 @@ async def main() -> None:
 
     tasks.append(renderer())
     timeout = aiohttp.ClientTimeout(connect=args.timeout)
-    connector = aiohttp.TCPConnector(force_close=True, limit=0, resolver=resolver(), verify_ssl=_str_to_bool(args.verify_tls, default=True))
+    connector = aiohttp.TCPConnector(
+        force_close=True, limit=0, resolver=resolver(), verify_ssl=_str_to_bool(args.verify_tls, default=True)
+    )
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
 
         async def worker() -> None:
             while not shutdown_event.is_set():
                 result = await request(
-                    url=args.url, method=args.method, session=session, follow_redirects=_str_to_bool(args.follow_redirects, default=True)
+                    url=args.url,
+                    method=args.method,
+                    session=session,
+                    follow_redirects=_str_to_bool(args.follow_redirects, default=True),
                 )
                 results.append(result)
 
