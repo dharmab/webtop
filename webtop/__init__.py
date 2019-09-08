@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 from collections import deque
-from threading import Event
 from typing import Dict, Collection, Optional, Deque, List, Any, Callable
 from yarl import URL
 import aiohttp
 import argparse
 import asyncio
 import datetime
+import durationpy  # type: ignore
 import json
 import math
 import os
@@ -90,7 +90,18 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--resolve", metavar="HOST:ADDRESS", type=str, help="Manually resolve host to address")
 
+    parser.add_argument("-d", "--duration", metavar="TIME", type=str, help="Test duration, e.g. 3h2m1s", default=None)
+
     return parser.parse_args()
+
+
+def duration_is_vaild(duration: str) -> bool:
+    try:
+        durationpy.from_str(duration)
+        return True
+    # Really?! durationpy raises bare Exception??
+    except Exception:
+        return False
 
 
 def _str_to_bool(s: str, default: bool) -> bool:
@@ -109,6 +120,7 @@ def are_args_valid(args: argparse.Namespace) -> bool:
             args.timeout > 0,
             args.workers > 0,
             args.resolve is None or ":" in args.resolve,
+            duration_is_vaild(args.duration),
         )
     )
 
@@ -225,7 +237,7 @@ async def main() -> None:
                 return CustomResolver(custom_mappings=custom_resolution)
 
     results: Deque[Result] = deque(maxlen=args.request_history)
-    shutdown_event = Event()
+    shutdown_event = asyncio.Event()
 
     def shutdown_signal_handler(_, __):
         shutdown_event.set()
@@ -234,6 +246,15 @@ async def main() -> None:
         signal.signal(shutdown_signal, shutdown_signal_handler)
 
     tasks = []
+
+    if args.duration is not None:
+        duration = durationpy.from_str(args.duration)
+
+        async def stop_test():
+            await asyncio.wait([shutdown_event.wait()], timeout=duration)
+            shutdown_event.set()
+
+        tasks.append(stop_test())
 
     async def renderer() -> None:
         while True:
