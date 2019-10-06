@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 
-from collections import deque
 from yarl import URL
-from typing import Callable, Deque, Optional
-import aiohttp
+from typing import Dict, Optional
+import api
 import argparse
 import asyncio
 import durationpy  # type: ignore
+import json
 import os
 import signal
-import webtop.api
+import yaml
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
 
     parser.add_argument("url", metavar="URL", type=URL)
 
@@ -26,13 +28,25 @@ def parse_args() -> argparse.Namespace:
         default="GET",
     )
 
-    parser.add_argument("-k", "--workers", metavar="N", type=int, help="Number of workers", default=1)
-
     parser.add_argument(
-        "--request-history", metavar="N", type=int, help="Number of request results to track", default=1000
+        "-k", "--workers", metavar="N", type=int, help="Number of workers", default=1
     )
 
-    parser.add_argument("--timeout", metavar="SEC", type=float, help="Request timeout threshold", default=1.0)
+    parser.add_argument(
+        "--request-history",
+        metavar="N",
+        type=int,
+        help="Number of request results to track",
+        default=1000,
+    )
+
+    parser.add_argument(
+        "--timeout",
+        metavar="SEC",
+        type=float,
+        help="Request timeout threshold",
+        default=1.0,
+    )
 
     parser.add_argument(
         "--follow-redirects",
@@ -43,7 +57,11 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--verify-tls", metavar="BOOL", type=str, help="Whether to verify TLS certificates", default="true"
+        "--verify-tls",
+        metavar="BOOL",
+        type=str,
+        help="Whether to verify TLS certificates",
+        default="true",
     )
 
     parser.add_argument(
@@ -56,9 +74,21 @@ def parse_args() -> argparse.Namespace:
         default="json",
     )
 
-    parser.add_argument("--resolve", metavar="HOST:ADDRESS", type=str, help="Manually resolve host to address")
+    parser.add_argument(
+        "--resolve",
+        metavar="HOST:ADDRESS",
+        type=str,
+        help="Manually resolve host to address",
+    )
 
-    parser.add_argument("-d", "--duration", metavar="TIME", type=str, help="Test duration, e.g. 3h2m1s", default=None)
+    parser.add_argument(
+        "-d",
+        "--duration",
+        metavar="TIME",
+        type=str,
+        help="Test duration, e.g. 3h2m1s",
+        default=None,
+    )
 
     return parser.parse_args()
 
@@ -95,69 +125,78 @@ def are_args_valid(args: argparse.Namespace) -> bool:
     )
 
 
+def render_stats(stats: dict, _format: str) -> str:
+    if _format == "json":
+        output = json.dumps(stats, indent=2)
+    elif _format == "yaml":
+        output = yaml.dump(  # type: ignore
+            stats, default_flow_style=False, sort_keys=False
+        )
+    return output
+
+
 async def main() -> None:
+    # Parse arguments
     args = parse_args()
     assert are_args_valid(args)
 
-    resolver: Callable = aiohttp.resolver.DefaultResolver
+    custom_resolution: Dict[str, str] = {}
     if args.resolve is not None:
         host, address = args.resolve.split(":")
         if args.url.host == host:
             custom_resolution = {host: address}
 
-            def resolver():
-                return webtop.api.CustomResolver(custom_mappings=custom_resolution)
-
-    results: Deque[webtop.api.Result] = deque(maxlen=args.request_history)
-    shutdown_event = asyncio.Event()
-
-    def shutdown_signal_handler(_, __):
-        shutdown_event.set()
-
-    for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(shutdown_signal, shutdown_signal_handler)
-
     tasks = []
 
-    if args.duration is not None:
-        duration = durationpy.from_str(args.duration)
+    # Start webtop runner
+    runner = api.Runner(
+        url=args.url,
+        name_resolution_overrides=custom_resolution,
+        method=args.method,
+        number_of_running_requests=args.request_history,
+        number_of_workers=args.workers,
+        timeout=args.timeout,
+    )
 
-        async def stop_test():
-            await asyncio.wait([shutdown_event.wait()], timeout=duration)
-            shutdown_event.set()
+    tasks.append(asyncio.create_task(runner.start()))
 
-        tasks.append(stop_test())
-
-    async def renderer() -> None:
+    # Start renderer
+    async def renderer():
         while True:
             if shutdown_event.is_set():
                 return
 
-            stats = webtop.api.build_stats(url=args.url, method=args.method, results=results)
-            output = webtop.api.render_stats(stats, _format=args.output_format)
+            stats = api.build_stats(
+                url=args.url, method=args.method, results=runner.get_results()
+            )
+            output = render_stats(stats, _format=args.output_format)
 
             os.system("clear")
             print(output, flush=True)
 
             await asyncio.sleep(0.1)
 
-    tasks.append(renderer())
-    timeout = aiohttp.ClientTimeout(connect=args.timeout)
-    connector = aiohttp.TCPConnector(
-        force_close=True, limit=0, resolver=resolver(), verify_ssl=_str_to_bool(args.verify_tls, default=True)
-    )
-    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+    tasks.append(asyncio.create_task(renderer()))
 
-        async def worker() -> None:
-            while not shutdown_event.is_set():
-                result = await webtop.api.request(
-                    url=args.url,
-                    method=args.method,
-                    session=session,
-                    follow_redirects=_str_to_bool(args.follow_redirects, default=True),
-                )
-                results.append(result)
+    # Handle shutdown
+    shutdown_event = asyncio.Event()
 
-        for _ in range(args.workers):
-            tasks.append(worker())
-        await asyncio.gather(*tasks)
+    def shutdown_signal_handler(_, __):
+        shutdown_event.set()
+        runner.stop()
+
+    for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
+        signal.signal
+
+    if args.duration is not None:
+        asyncio.wait(
+            [shutdown_event.wait()], timeout=durationpy.from_str(args.duration)
+        )
+
+    # Zhu Li, do the things!
+    task_group = asyncio.gather(*tasks)
+    await task_group
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

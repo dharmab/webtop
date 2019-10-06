@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 
-from . import api, cli
-import asyncio
+from . import api
 
-__all__ = ["api", "cli"]
-
-if __name__ == "__main__":
-    asyncio.run(cli.main())
+__all__ = ["api"]
