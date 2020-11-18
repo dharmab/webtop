@@ -1,2 +1,5 @@
 *.pyc
 .mypy_cache
+
+# IDE stuffs
+.idea

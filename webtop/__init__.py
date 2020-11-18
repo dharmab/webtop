@@ -253,7 +253,7 @@ async def main() -> None:
         duration = durationpy.from_str(args.duration)
 
         async def stop_test():
-            await asyncio.wait([shutdown_event.wait()], timeout=duration)
+            await asyncio.wait([shutdown_event.wait()], timeout=duration.total_seconds())
             shutdown_event.set()
 
         tasks.append(stop_test())
